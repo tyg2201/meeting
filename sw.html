@@ -1,0 +1,1535 @@
+﻿﻿﻿﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>会议计时系统</title>
+    <link rel="icon" href="meet.png" type="image/png">
+    <style>
+        :root {
+            /* === 专属配色 === */
+            --tax-blue-dark: #003366;
+            --tax-blue-light: #004ea2;
+            --tax-blue-dark-rgb: 0, 51, 102;
+            --tax-gold: #d4af37;
+            --tax-gold-bright: #f2d975;
+            --text-white: #ffffff;
+            --bg-gradient: linear-gradient(to bottom, #00284d 0%, #001a33 100%);
+            --bg-current: var(--bg-gradient);
+            --bg-image: none;
+            --title-size: 60px;
+            --title-color: var(--tax-gold-bright);
+            --subtitle-size: 30px;
+            --subtitle-color: var(--tax-gold-bright);
+            --unit-size: 20px;
+            --unit-color: var(--tax-gold-bright);
+            --date-size: 24px;
+            --date-color: var(--tax-gold-bright);
+            --logo-height: 120px;
+            --logo-idle-height: 180px;
+            --title-font: "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei", sans-serif;
+            --subtitle-font: var(--title-font);
+            --unit-font: var(--title-font);
+            --date-font: var(--title-font);
+            
+            /* 状态色 */
+            --status-ready: #28a745;
+            --status-pause: #ffc107;
+            --status-danger: #dc3545;
+            
+            --font-digit: "Impact", "Arial Black", sans-serif;
+            --font-main: "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei", "SimHei", sans-serif;
+        }
+
+        body {
+            margin: 0;
+            height: 100vh;
+            background: var(--bg-current);
+            color: var(--text-white);
+            font-family: var(--font-main);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            user-select: none;
+            cursor: default;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-size: cover;
+        }
+        body.fullscreen-idle { cursor: none; }
+        body.bg-image { background-image: var(--bg-image); }
+        body.hide-date #dateDisplay { display: none; }
+        body.hide-unit #unitDisplay { display: none; }
+        body.user-hide-speaker-info .speaker-info { display: none !important; }
+        body.hide-meeting-total #meetingTotalCard { display: none; }
+        body.hide-progress #progressBar { display: none; }
+
+        /* === 徽章样式 === */
+        .tax-logo {
+            position: absolute;
+            left: 20px;          
+            top: 10px;           
+            height: var(--logo-height);
+            width: auto;
+            max-width: 25vw;     /* 限制最大宽度，防止遮挡标题 */
+            object-fit: contain; /* 保持图片比例，防止拉伸变形 */
+            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5)); 
+            z-index: 60;
+            transition: all 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        /* 闲置状态下税徽居中放大 */
+        body.idle-layout .tax-logo {
+            left: 50%;
+            transform: translateX(-50%);
+            height: var(--logo-idle-height);
+            max-width: 80vw; /* 闲置居中时允许更宽 */
+            top: 30px;
+        }
+
+        .settings-panel {
+            position: absolute; right: 20px; top: 65px;
+            display: grid; grid-template-columns: auto auto; gap: 8px 15px;
+            background: rgba(0, 30, 60, 0.85);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            backdrop-filter: blur(4px);
+            opacity: 0.8; transition: opacity 0.2s ease, transform 0.2s ease;
+            z-index: 70;
+        }
+        .settings-panel:hover { opacity: 1; }
+        body.settings-panel-hidden .settings-panel,
+        body.editing-content .settings-panel {
+            opacity: 0;
+            transform: translateX(20px);
+            pointer-events: none;
+            visibility: hidden;
+        }
+        [contenteditable="true"]:focus {
+            outline: 1px dashed rgba(242, 217, 117, 0.75);
+            outline-offset: 5px;
+        }
+        .settings-row { display: flex; align-items: center; justify-content: flex-end; gap: 8px; font-size: 12px; color: #ccc; white-space: nowrap; }
+        .settings-row.full-width { grid-column: 1 / -1; width: 100%; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 5px; margin-top: 2px; }
+
+        .settings-panel input {
+            background: rgba(0,0,0,0.3); border: 1px solid var(--tax-gold);
+            color: var(--tax-gold-bright); padding: 2px; width: 40px; text-align: center;
+        }
+        .settings-panel select {
+            background: rgba(0,0,0,0.3); border: 1px solid var(--tax-gold);
+            color: var(--tax-gold-bright); padding: 2px; text-align: center;
+            max-width: 138px;
+        }
+        .settings-panel select option {
+            background: #001a33;
+            color: var(--tax-gold-bright);
+        }
+        .settings-panel .color-input {
+            width: 48px; height: 20px; padding: 0; border: none;
+            background: transparent;
+        }
+        .header-title {
+            position: absolute;
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-10px) scale(0.6);
+            transform-origin: top center;
+            font-size: calc(var(--title-size) * 0.6);
+            font-family: var(--title-font);
+            font-weight: bold;
+            color: var(--title-color);
+            letter-spacing: 3px;
+            text-shadow: 0 4px 10px rgba(0,0,0,0.6);
+            opacity: 0;
+            pointer-events: auto;
+            cursor: text;
+            transition: opacity 0.35s ease, transform 0.35s ease;
+            will-change: transform, opacity;
+            z-index: 55;
+            max-width: 90%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .header-subtitle {
+            position: absolute;
+            top: 55px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: calc(var(--subtitle-size) * 0.6);
+            font-family: var(--subtitle-font);
+            color: var(--subtitle-color);
+            opacity: 0;
+            pointer-events: auto;
+            z-index: 55;
+            white-space: nowrap;
+            text-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            transition: opacity 0.35s ease;
+            font-weight: bold;
+        }
+
+        .btn-fullscreen-top {
+            position: absolute; right: 20px; top: 15px;
+            padding: 8px 20px; font-size: 16px;
+            background: rgba(0,0,0,0.4); border: 1px solid var(--tax-gold);
+            color: var(--tax-gold-bright); border-radius: 4px;
+            cursor: pointer; z-index: 75; transition: all 0.2s;
+            font-weight: bold; letter-spacing: 2px;
+        }
+        .btn-fullscreen-top:hover {
+            background: var(--tax-gold); color: #000;
+            box-shadow: 0 0 15px rgba(212,175,55,0.6); transform: scale(1.05);
+        }
+
+        /* === 主显示区 === */
+        .main-display {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 50px;
+            padding: 30px 40px 20px;
+            position: relative; /* 为日期定位做参照 */
+        }
+
+        .card {
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 6px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            position: relative;
+        }
+
+        .side-card {
+            width: 220px;
+            height: 160px;
+            transition: all 0.6s ease;
+        }
+        
+        .main-card {
+            width: 580px; height: 340px;
+            border: 2px solid var(--tax-gold);
+            background: rgba(0, 0, 0, 0.25);
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+            transition: all 0.3s;
+        }
+
+        .label { font-size: 16px; color: #8faec9; margin-bottom: 10px; letter-spacing: 1px; }
+        .digit { font-family: var(--font-digit); font-variant-numeric: tabular-nums; }
+        .side-digit { font-size: 42px; color: #fff; line-height: 1.1; }
+
+        .main-digit {
+            font-size: 140px; line-height: 1; color: #fff; z-index: 2;
+            text-shadow: 4px 4px 0px rgba(0,0,0,0.4);
+        }
+
+        .center-title-display {
+            display: none; font-size: var(--title-size); font-weight: bold; color: var(--title-color);
+            font-family: var(--title-font);
+            line-height: 1.5; padding: 0 20px; text-shadow: 0 4px 10px rgba(0,0,0,0.8);
+            word-break: break-word; white-space: pre-wrap;
+        }
+        .center-subtitle-display {
+            display: none;
+            font-size: var(--subtitle-size);
+            font-family: var(--subtitle-font);
+            color: var(--subtitle-color);
+            font-weight: bold;
+            margin-top: 10px;
+            text-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            white-space: pre-wrap;
+            line-height: 1.3;
+        }
+        .speaker-info {
+            margin-top: 12px;
+            font-size: 18px;
+            color: #c9d7e6;
+            letter-spacing: 1px;
+        }
+        body.hide-speaker-info .speaker-info { display: none; }
+        body.idle-layout .center-title-display {
+            font-size: calc(var(--title-size) * 1.3);
+            letter-spacing: 6px;
+            width: 90%;
+            margin: 0 auto;
+            transform: scaleX(1.08) translateY(-40px);
+            animation: titlePulse 0.8s ease;
+        }
+        @keyframes titlePulse {
+            from { opacity: 0; transform: scale(0.98) scaleX(1.02) translateY(-40px); }
+            to { opacity: 1; transform: scale(1) scaleX(1.08) translateY(-40px); }
+        }
+
+        .status-tag {
+            position: absolute; top: 15px; right: 15px;
+            padding: 3px 8px; border-radius: 2px; font-weight: bold; font-size: 13px;
+            display: none; letter-spacing: 1px;
+        }
+        .paused-mode .tag-paused { display: block; background: var(--tax-gold); color: #000; }
+        
+        .paused-mode .main-digit { color: #888; text-shadow: none; }
+        .status-warning .main-digit { color: var(--status-pause); }
+        .status-danger .main-digit { color: var(--status-danger); }
+
+        .ready-mode .main-digit, .ready-mode .label, .ready-mode .progress-bar, .ready-mode .status-tag { display: none !important; }
+        .ready-mode .center-title-display { display: block; animation: fadeIn 0.5s ease; }
+        .ready-mode.main-card {
+            border: none;
+            background: transparent;
+            box-shadow: none;
+            width: 100%;
+        }
+        body.show-header-title .header-title {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0) scale(1);
+            animation: headerReveal 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        body.show-header-title .header-subtitle { display: none !important; }
+        .ready-mode .center-subtitle-display { display: block; animation: fadeIn 0.6s ease; }
+
+        @keyframes headerReveal {
+            from { opacity: 0; transform: translateX(-50%) translateY(-14px) scale(0.5); }
+            to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        body.idle-layout #clockCard,
+        body.idle-layout #meetingTotalCard {
+            position: absolute;
+            bottom: 20px;
+            width: 160px;
+            height: 110px;
+            padding: 12px;
+            opacity: 0.85;
+            transform: scale(0.9);
+        }
+        body.idle-layout #clockCard { left: 20px; }
+        body.idle-layout #meetingTotalCard { right: 20px; }
+
+        .progress-bar {
+            position: absolute; bottom: 0; left: 0;
+            height: 12px; background: var(--tax-gold); width: 100%;
+            transition: width 0.2s linear;
+        }
+        .status-danger .progress-bar { background: var(--status-danger); }
+
+        /* === 底部日期显示 (固定到底部) === */
+        .fixed-bottom-date {
+            position: absolute;
+            bottom: 60px; /* 距离底部的高度 */
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: var(--date-size);
+            font-family: var(--date-font);
+            font-weight: bold;
+            color: var(--date-color);
+            letter-spacing: 2px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+            z-index: 20; /* 低于控制按钮的100 */
+            opacity: 0.8;
+            pointer-events: none; /* 让鼠标点击穿透 */
+        }
+
+        .fixed-bottom-unit {
+            position: absolute;
+            bottom: 95px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            font-size: var(--unit-size);
+            font-family: var(--unit-font);
+            font-weight: bold;
+            color: var(--unit-color);
+            letter-spacing: 2px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+            z-index: 110;
+            opacity: 0.8;
+            cursor: text;
+            white-space: pre-wrap;
+            line-height: 1.5;
+        }
+
+        /* === 底部控制区 === */
+        .controls {
+            height: 100px; /* 增加高度，确保背景能遮住日期 */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+            /* 背景渐变，浮现时遮挡日期 */
+            background: linear-gradient(to top, rgba(0,0,0,1) 30%, rgba(0,0,0,0) 80%);
+            position: absolute; bottom: 0; width: 100%;
+            transition: transform 0.2s ease, opacity 0.2s ease;
+            z-index: 100;
+        }
+
+        button {
+            padding: 10px 25px; font-size: 16px; border: none; border-radius: 4px;
+            cursor: pointer; font-weight: bold; min-width: 130px;
+            font-family: var(--font-main);
+            box-shadow: 0 3px 5px rgba(0,0,0,0.5);
+            letter-spacing: 1px;
+        }
+        button:active { transform: translateY(2px); }
+
+        .btn-meeting { background: linear-gradient(to bottom, #0056b3, #004494); color: white; border: 1px solid #0066cc; }
+        .btn-speaker-start { background: linear-gradient(to bottom, #28a745, #218838); color: white; border: 1px solid #34ce57; }
+        .btn-speaker-pause { background: linear-gradient(to bottom, #d39e00, #c69500); color: white; border: 1px solid #e0a800; }
+        .btn-next { background: #e2e6ea; color: #003366; }
+        .btn-stop { background: transparent; color: #888; border: 1px solid #555; min-width: auto; }
+        .btn-stop:hover { color: #fff; border-color: #fff; }
+        .btn-meeting-ended {
+            background: #dc3545;
+            color: #fff;
+            border: 1px solid #a71d2a;
+            animation: endBlink 0.8s steps(1, end) infinite;
+        }
+        @keyframes endBlink {
+            0% { opacity: 1; }
+            50% { opacity: 0.2; }
+            100% { opacity: 1; }
+        }
+
+        body.meeting-alert #meetingTimer {
+            color: var(--status-pause) !important;
+            text-shadow: 0 0 10px rgba(255, 193, 7, 0.6);
+        }
+        .meeting-end-overlay {
+            position: absolute;
+            bottom: calc(95px + var(--unit-size) + 28px);
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 36px;
+            font-weight: bold;
+            color: #dc3545;
+            text-shadow: 0 6px 16px rgba(0,0,0,0.6);
+            letter-spacing: 4px;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 105;
+        }
+        body.meeting-ended .meeting-end-overlay {
+            opacity: 1;
+            animation: endBlink 0.8s steps(1, end) infinite;
+        }
+        body.meeting-ended #meetingTimer {
+            color: var(--status-danger);
+            text-shadow: 0 0 10px rgba(220, 53, 69, 0.6);
+        }
+
+        .controls { opacity: 1; transform: translateY(0); pointer-events: auto; }
+        body.fullscreen-mode.user-idle .controls { opacity: 0; transform: translateY(100%); pointer-events: none; }
+        body.fullscreen-mode.user-idle .settings-panel { opacity: 0; transform: translateY(-10px); pointer-events: none; }
+        body.fullscreen-mode.user-idle .btn-fullscreen-top { opacity: 0; transform: translateY(-10px); pointer-events: none; }
+        body.fullscreen-mode.user-idle .speaker-panel { opacity: 0; transform: translateY(10px); pointer-events: none; }
+
+        .speaker-panel {
+            position: absolute;
+            right: 20px;
+            bottom: 120px;
+            width: 260px;
+            background: rgba(0, 30, 60, 0.7);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 6px;
+            padding: 10px;
+            z-index: 65;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+        }
+        .speaker-panel h4 {
+            margin: 0 0 8px;
+            font-size: 14px;
+            color: var(--tax-gold-bright);
+            letter-spacing: 1px;
+        }
+        .speaker-list {
+            max-height: 160px;
+            overflow: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .speaker-item {
+            padding: 6px 8px;
+            background: rgba(0,0,0,0.2);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            line-height: 1.2;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+        .speaker-item[draggable="true"] { cursor: grab; }
+        .speaker-item.dragging { opacity: 0.5; background: rgba(0,0,0,0.4); border: 1px dashed #888; }
+        .speaker-item.drag-over { border-top: 2px solid var(--tax-gold); transform: translateY(2px); }
+        .speaker-item.active {
+            border-color: var(--tax-gold);
+            box-shadow: 0 0 10px rgba(212,175,55,0.4);
+        }
+        .speaker-panel .mini-row {
+            display: flex;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .speaker-panel input {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid var(--tax-gold);
+            color: var(--tax-gold-bright);
+            padding: 2px 4px;
+            width: 100%;
+            text-align: center;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body id="appBody">
+
+    <div class="main-display">
+        <img id="meetingLogo" src='data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><circle cx="60" cy="60" r="56" fill="none" stroke="%23d4af37" stroke-width="4"/><path d="M60 30a12 12 0 1 1 0 24 12 12 0 0 1 0-24zm-30 18a10 10 0 1 1 0 20 10 10 0 0 1 0-20zm60 0a10 10 0 1 1 0 20 10 10 0 0 1 0-20zM60 60c-13.3 0-24 7.2-24 18v6h48v-6c0-10.8-10.7-18-24-18zm-30 22c-9.6 0-16.8 4.8-16.8 12v5h19.2v-5c0-4.8 3.6-8.4 9.6-10.8zm60 0c6 2.4 9.6 6 9.6 10.8v5h19.2v-5c0-7.2-7.2-12-16.8-12z" fill="%23d4af37"/></svg>' class="tax-logo" alt="会议Logo">
+        <div class="header-title" id="headerTitle" contenteditable="true">会议名称</div>
+        <div class="header-subtitle" id="headerSubtitle" contenteditable="true">点击输入副标题</div>
+        <div class="meeting-end-overlay" id="meetingEndOverlay">会议已超时</div>
+        <button class="btn-fullscreen-top" onclick="toggleFullScreen()" title="全屏显示">⛶ 全屏显示</button>
+        <button class="btn-fullscreen-top" id="btnTogglePanel" style="right:180px; background:rgba(0,0,0,0.3);" onclick="toggleSettingsPanel()" title="显示或收起设置面板（快捷键 H）">✕ 收起</button>
+        <div class="settings-panel">
+            <div class="settings-row">
+                发言限时 <input type="number" id="inputSpeakTime" value="8" onchange="manualUpdateSettings()"> 分
+            </div>
+            <div class="settings-row">
+                发言倒计时提示 <input type="number" id="inputAlert" value="30" onchange="manualUpdateSettings()"> 秒
+            </div>
+            <div class="settings-row">
+                会议 <input type="number" id="inputMeetingLimit" value="120" onchange="manualUpdateSettings()"> 分
+            </div>
+            <div class="settings-row">
+                提前 <input type="number" id="inputMeetingAlert" value="10" onchange="manualUpdateSettings()"> 分
+            </div>
+            <div class="settings-row">
+                行业
+                <select id="inputIndustry" onchange="applyIndustryPreset()">
+                    <option value="tax">税务</option>
+                    <option value="finance">金融</option>
+                    <option value="tech">科技</option>
+                    <option value="health">医疗</option>
+                    <option value="education">教育</option>
+                </select>
+            </div>
+            <div class="settings-row">
+                背景
+                <select id="inputBgMode" onchange="applyAppearanceSettings()">
+                    <option value="default">默认</option>
+                    <option value="ocean">深蓝渐变</option>
+                    <option value="sunset">暖色渐变</option>
+                    <option value="image">图片</option>
+                </select>
+                <input type="file" id="inputBgImage" accept="image/*" style="display:none;" onchange="loadBgImage(event)">
+                <button class="btn-stop" style="padding:2px 6px; font-size:12px; min-width:auto;" onclick="triggerBgImage()">选择</button>
+            </div>
+            <div class="settings-row">
+                Logo <button class="btn-stop" style="padding:2px 6px; font-size:12px; min-width:auto;" onclick="triggerLogoImage()">上传</button>
+                <input type="file" id="inputLogoImage" accept="image/*" style="display:none;" onchange="loadLogoImage(event)">
+                缩放 <input type="number" id="inputLogoScale" value="100" min="30" max="300" step="5" onchange="applyAppearanceSettings()" style="width:50px"> %
+                <button class="btn-stop" style="padding:0; min-width:24px; height:24px;" onclick="adjustPosition('meetingLogo', 'top', -5)" title="Logo上移">↑</button>
+                <button class="btn-stop" style="padding:0; min-width:24px; height:24px;" onclick="adjustPosition('meetingLogo', 'top', 5)" title="Logo下移">↓</button>
+            </div>
+            <div class="settings-row">
+                主色 <input class="color-input" type="color" id="inputPrimaryColor" value="#003366" onchange="applyAppearanceSettings()">
+                强调 <input class="color-input" type="color" id="inputAccentColor" value="#d4af37" onchange="applyAppearanceSettings()">
+            </div>
+            <div class="settings-row">
+                标题 <input type="number" id="inputTitleSize" value="60" onchange="applyAppearanceSettings()" style="width:50px"> px
+                <select id="inputTitleFont" onchange="applyAppearanceSettings()" aria-label="主标题字体"></select>
+                <input class="color-input" type="color" id="inputTitleColor" value="#f2d975" onchange="applyAppearanceSettings()">
+                <button class="btn-stop" style="padding:0; min-width:24px; height:24px;" onclick="adjustPosition('headerTitle', 'top', -5)" title="上移">↑</button>
+                <button class="btn-stop" style="padding:0; min-width:24px; height:24px;" onclick="adjustPosition('headerTitle', 'top', 5)" title="下移">↓</button>
+            </div>
+            <div class="settings-row">
+                副标题 <input type="number" id="inputSubtitleSize" value="30" onchange="applyAppearanceSettings()" style="width:50px"> px
+                <select id="inputSubtitleFont" onchange="applyAppearanceSettings()" aria-label="副标题字体"></select>
+                <input class="color-input" type="color" id="inputSubtitleColor" value="#f2d975" onchange="applyAppearanceSettings()">
+                <button class="btn-stop" style="padding:0; min-width:24px; height:24px;" onclick="adjustPosition('headerSubtitle', 'top', -5)" title="上移">↑</button>
+                <button class="btn-stop" style="padding:0; min-width:24px; height:24px;" onclick="adjustPosition('headerSubtitle', 'top', 5)" title="下移">↓</button>
+            </div>
+            <div class="settings-row">
+                单位 <input type="number" id="inputUnitSize" value="20" onchange="applyAppearanceSettings()" style="width:50px"> px
+                <select id="inputUnitFont" onchange="applyAppearanceSettings()" aria-label="单位字体"></select>
+                <input class="color-input" type="color" id="inputUnitColor" value="#f2d975" onchange="applyAppearanceSettings()">
+                <button class="btn-stop" style="padding:0; min-width:24px; height:24px;" onclick="adjustPosition('unitDisplay', 'bottom', 5)" title="上移">↑</button>
+                <button class="btn-stop" style="padding:0; min-width:24px; height:24px;" onclick="adjustPosition('unitDisplay', 'bottom', -5)" title="下移">↓</button>
+            </div>
+            <div class="settings-row">
+                日期 <input type="number" id="inputDateSize" value="24" onchange="applyAppearanceSettings()" style="width:50px"> px
+                <select id="inputDateFont" onchange="applyAppearanceSettings()" aria-label="日期字体"></select>
+                <input class="color-input" type="color" id="inputDateColor" value="#f2d975" onchange="applyAppearanceSettings()">
+                <button class="btn-stop" style="padding:0; min-width:24px; height:24px;" onclick="adjustPosition('dateDisplay', 'bottom', 5)" title="上移">↑</button>
+                <button class="btn-stop" style="padding:0; min-width:24px; height:24px;" onclick="adjustPosition('dateDisplay', 'bottom', -5)" title="下移">↓</button>
+            </div>
+            <div class="settings-row full-width">
+                显示
+                <label><input type="checkbox" id="toggleDate" onchange="applyLayoutSettings()" checked>日期</label>
+                <label><input type="checkbox" id="toggleUnit" onchange="applyLayoutSettings()" checked>单位</label>
+                <label><input type="checkbox" id="toggleSpeakerInfo" onchange="applyLayoutSettings()" checked>发言人</label>
+                <label><input type="checkbox" id="toggleMeetingTotal" onchange="applyLayoutSettings()" checked>总时长</label>
+                <label><input type="checkbox" id="toggleProgress" onchange="applyLayoutSettings()" checked>进度</label>
+            </div>
+            <div class="settings-row full-width">
+                <button class="btn-stop" style="padding:2px 8px; font-size:12px; min-width:auto;" onclick="exportMeetingLogs()">导出记录</button>
+                <button class="btn-stop" style="padding:2px 8px; font-size:12px; min-width:auto;" onclick="exportConfig()">导出配置</button>
+                <button class="btn-stop" style="padding:2px 8px; font-size:12px; min-width:auto;" onclick="triggerImport()">导入配置</button>
+                <input type="file" id="configFile" accept="application/json" style="display:none;" onchange="importConfig(event)">
+                <button class="btn-stop" style="padding:2px 8px; font-size:12px; min-width:auto;" onclick="openAboutWindow()">关于&帮助</button>
+            </div>
+        </div>
+        <div class="card side-card" id="clockCard">
+            <div class="label">北京时间</div>
+            <div class="digit side-digit" id="clock">00:00:00</div>
+        </div>
+
+        <div class="card main-card" id="speakerCard">
+            <div class="status-tag tag-paused">暂停中</div>
+            <div class="label">发言剩余时间</div>
+            <div class="digit main-digit" id="speakerTimer">05:00</div>
+            <div class="speaker-info" id="speakerInfo">姓名 / 部门 / 岗位</div>
+            <div class="progress-bar" id="progressBar"></div>
+            <div class="center-title-display" id="centerTitle" contenteditable="true">会议名称</div>
+            <div class="center-subtitle-display" id="centerSubtitle" contenteditable="true">点击输入副标题</div>
+        </div>
+
+        <div class="card side-card" id="meetingTotalCard">
+            <div class="label">会议总时长</div>
+            <div class="digit side-digit" id="meetingTimer">00:00:00</div>
+        </div>
+    </div>
+
+    <div class="fixed-bottom-date" id="dateDisplay">--年--月--日</div>
+    <div class="fixed-bottom-unit" id="unitDisplay" contenteditable="true">某某单位</div>
+
+    <div class="speaker-panel" id="speakerPanel">
+        <h4>发言顺序</h4>
+        <div class="speaker-list" id="speakerList"></div>
+        <div class="mini-row">
+            <input type="text" id="inputSpeakerName" placeholder="姓名">
+            <input type="text" id="inputSpeakerDept" placeholder="部门">
+            <input type="text" id="inputSpeakerRole" placeholder="岗位">
+        </div>
+        <div class="mini-row">
+            <button class="btn-stop" style="padding:2px 8px; font-size:12px; min-width:auto;" onclick="saveSpeaker()">保存</button>
+            <button class="btn-stop" style="padding:2px 8px; font-size:12px; min-width:auto;" onclick="addSpeaker()">新增</button>
+            <button class="btn-stop" style="padding:2px 8px; font-size:12px; min-width:auto;" onclick="removeSpeaker()">删除</button>
+            <label style="font-size:12px; color:#ccc; display:flex; align-items:center; gap:4px;">
+                <input type="checkbox" id="toggleAutoRotate" onchange="toggleAutoRotate()">自动轮转
+            </label>
+        </div>
+    </div>
+
+    <div class="controls" id="controlsArea">
+        <button class="btn-meeting" id="btnMeeting" onclick="actionMeetingControl()">会议开始</button>
+        <button class="btn-speaker-start" id="btnSpeaker" onclick="actionSpeakerControl()">发言开始</button>
+        <button class="btn-next" onclick="actionNextSpeaker()">下一位发言</button>
+        <button class="btn-stop" onclick="actionResetAll()">重置</button>
+    </div>
+
+<script>
+    const State = {
+        meetingRunning: false, speakerRunning: false,
+        meetingSeconds: 0, speakerSeconds: 480, speakerLimit: 480, alertTime: 30,
+        meetingLimit: 7200, meetingAlert: 600, meetingNextBeepAt: null,
+        meetingEnded: false,
+        speakerTimeUpPlayed: false,
+        speakerAlertBeepLeft: 0,
+        speakerAlertArmed: true,
+        speakers: [
+            { name: "张三", dept: "办公室", role: "主任" },
+            { name: "李四", dept: "税政科", role: "科长" },
+            { name: "王五", dept: "征管科", role: "专员" }
+        ],
+        currentSpeakerIndex: 0,
+        autoRotate: false,
+        logs: [],
+        backgroundImageData: null,
+        bgBlobUrl: null,
+        panelVisible: true
+    };
+    let dragSrcIndex = null;
+    const AlertConfig = {
+        meetingInterval: 30,
+        meetingBurstCount: 10,
+        meetingBurstDuration: 3
+    };
+    let timerInterval = null, audioCtx = null;
+    const TIMEUP_AUDIO_SRC = "ts.MP3";
+
+    const dom = {
+        body: document.getElementById('appBody'),
+        clock: document.getElementById('clock'),
+        date: document.getElementById('dateDisplay'),
+        unit: document.getElementById('unitDisplay'),
+        meeting: document.getElementById('meetingTimer'),
+        speaker: document.getElementById('speakerTimer'),
+        bar: document.getElementById('progressBar'),
+        card: document.getElementById('speakerCard'),
+        logo: document.querySelector('.tax-logo'),
+        speakerInfo: document.getElementById('speakerInfo'),
+        speakerList: document.getElementById('speakerList'),
+        centerTitle: document.getElementById('centerTitle'),
+        headerTitle: document.getElementById('headerTitle'),
+        centerSubtitle: document.getElementById('centerSubtitle'),
+        headerSubtitle: document.getElementById('headerSubtitle'),
+        inTime: document.getElementById('inputSpeakTime'),
+        inAlert: document.getElementById('inputAlert'),
+        inMeetingLimit: document.getElementById('inputMeetingLimit'),
+        inMeetingAlert: document.getElementById('inputMeetingAlert'),
+        inIndustry: document.getElementById('inputIndustry'),
+        inBgMode: document.getElementById('inputBgMode'),
+        inLogoScale: document.getElementById('inputLogoScale'),
+        inPrimaryColor: document.getElementById('inputPrimaryColor'),
+        inAccentColor: document.getElementById('inputAccentColor'),
+        inTitleSize: document.getElementById('inputTitleSize'),
+        inTitleFont: document.getElementById('inputTitleFont'),
+        inTitleColor: document.getElementById('inputTitleColor'),
+        inSubtitleSize: document.getElementById('inputSubtitleSize'),
+        inSubtitleFont: document.getElementById('inputSubtitleFont'),
+        inSubtitleColor: document.getElementById('inputSubtitleColor'),
+        inUnitSize: document.getElementById('inputUnitSize'),
+        inUnitFont: document.getElementById('inputUnitFont'),
+        inUnitColor: document.getElementById('inputUnitColor'),
+        inDateSize: document.getElementById('inputDateSize'),
+        inDateFont: document.getElementById('inputDateFont'),
+        inDateColor: document.getElementById('inputDateColor'),
+        toggleDate: document.getElementById('toggleDate'),
+        toggleUnit: document.getElementById('toggleUnit'),
+        toggleSpeakerInfo: document.getElementById('toggleSpeakerInfo'),
+        toggleMeetingTotal: document.getElementById('toggleMeetingTotal'),
+        toggleProgress: document.getElementById('toggleProgress'),
+        inSpeakerName: document.getElementById('inputSpeakerName'),
+        inSpeakerDept: document.getElementById('inputSpeakerDept'),
+        inSpeakerRole: document.getElementById('inputSpeakerRole'),
+        toggleAutoRotate: document.getElementById('toggleAutoRotate'),
+        btnMeeting: document.getElementById('btnMeeting'),
+        btnSpeaker: document.getElementById('btnSpeaker'),
+        controls: document.getElementById('controlsArea'),
+        settings: document.querySelector('.settings-panel'),
+        speakerPanel: document.getElementById('speakerPanel'),
+        btnFullscreen: document.querySelector('.btn-fullscreen-top'),
+        btnTogglePanel: document.getElementById('btnTogglePanel')
+    };
+
+    window.onload = () => {
+        updateRealTimeClock(); setInterval(updateRealTimeClock, 1000);
+        initApp();
+    };
+
+    const FONT_OPTIONS = [
+        { name: '系统黑体（推荐）', value: '"Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei", sans-serif' },
+        { name: '方正小标宋简体', value: '"方正小标宋简体", "FZXiaoBiaoSong-B05S", "方正小标宋_GBK", "STZhongsong", "华文中宋", "Noto Serif CJK SC", "Source Han Serif SC", serif' },
+        { name: '华文中宋', value: '"STZhongsong", "华文中宋", "Noto Serif CJK SC", "Source Han Serif SC", serif' },
+        { name: '思源黑体', value: '"Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei", "WenQuanYi Micro Hei", sans-serif' },
+        { name: '黑体', value: '"SimHei", "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei", sans-serif' },
+        { name: '宋体', value: '"SimSun", "Noto Serif CJK SC", "Source Han Serif SC", "AR PL UMing CN", serif' },
+        { name: '楷体', value: '"KaiTi", "STKaiti", "AR PL UKai CN", "Noto Serif CJK SC", serif' },
+        { name: '仿宋', value: '"FangSong", "STFangsong", "AR PL UMing CN", "Noto Serif CJK SC", serif' },
+        { name: 'Arial', value: 'Arial, "Liberation Sans", sans-serif' }
+    ];
+
+    function initFontSelectors() {
+        [dom.inTitleFont, dom.inSubtitleFont, dom.inUnitFont, dom.inDateFont].forEach(select => {
+            if (!select || select.options.length) return;
+            FONT_OPTIONS.forEach(font => select.add(new Option(font.name, font.value)));
+        });
+    }
+
+    function initApp() {
+        initFontSelectors();
+        manualUpdateSettings(); applyIndustryPreset(); applyAppearanceSettings(); applyLayoutSettings(); renderSpeakerList(); render(); setupInteractionMonitor(); setupEditablePanelAvoidance(); updateSettingsPanelVisibility();
+        
+        // 监听顶部标题输入，同步回中心标题
+        dom.headerTitle.addEventListener('input', () => { dom.centerTitle.innerText = dom.headerTitle.innerText; });
+        dom.headerSubtitle.addEventListener('input', () => { dom.centerSubtitle.innerText = dom.headerSubtitle.innerText; });
+    }
+
+    function actionMeetingControl() {
+        initAudio();
+        if (State.meetingLimit > 0 && State.meetingSeconds >= State.meetingLimit) {
+            alert("已达会议最大时长，请重置后再开始。");
+            return;
+        }
+        if (!State.meetingRunning) {
+            State.meetingRunning = true;
+            State.meetingEnded = false;
+            if (!timerInterval) timerInterval = setInterval(tick, 1000);
+        }
+        render();
+    }
+
+    function actionSpeakerControl() {
+        if (!State.meetingRunning) actionMeetingControl();
+        State.speakerRunning = !State.speakerRunning;
+        render();
+    }
+
+    function actionNextSpeaker() {
+        logCurrentSpeaker();
+        advanceSpeaker();
+    }
+
+    function actionResetAll() {
+        if (!confirm("确认重置会议与计时？")) return;
+        logCurrentSpeaker(); // 记录最后一位发言者
+        clearInterval(timerInterval); timerInterval = null;
+        State.meetingRunning = false; State.speakerRunning = false;
+        State.meetingEnded = false;
+        State.meetingSeconds = 0; manualUpdateSettings();
+        State.speakerSeconds = State.speakerLimit;
+        State.speakerTimeUpPlayed = false;
+        State.speakerAlertBeepLeft = 0;
+        State.speakerAlertArmed = true;
+        State.meetingNextBeepAt = null;
+        State.logs = []; // 重置日志
+        render();
+    }
+
+    function tick() {
+        if (State.meetingRunning) State.meetingSeconds++;
+        if (State.meetingRunning && State.speakerRunning) {
+            State.speakerSeconds--;
+            if (State.speakerSeconds > State.alertTime) {
+                State.speakerAlertBeepLeft = 0;
+                State.speakerAlertArmed = true;
+            } else if (State.speakerSeconds <= State.alertTime && State.speakerSeconds > 0 && State.speakerAlertArmed) {
+                State.speakerAlertBeepLeft = 3;
+                State.speakerAlertArmed = false;
+            }
+            if (State.speakerSeconds <= 0 && !State.speakerTimeUpPlayed) {
+                playTimeUpSound();
+                State.speakerTimeUpPlayed = true;
+            }
+            if (State.autoRotate && State.speakerSeconds <= 0) {
+                advanceSpeaker(true);
+            } else {
+                tryPlaySound();
+            }
+        }
+        if (State.meetingRunning) {
+            if (!State.meetingEnded) {
+                tryPlayMeetingSound();
+                if (State.meetingLimit > 0 && State.meetingSeconds >= State.meetingLimit) {
+                    State.speakerRunning = false;
+                    State.meetingEnded = true;
+                    State.meetingNextBeepAt = null;
+                }
+            }
+        }
+        render();
+    }
+
+    function render() {
+        dom.meeting.innerText = formatTime(State.meetingSeconds, true);
+        let val = Math.abs(State.speakerSeconds);
+        dom.speaker.innerText = (State.speakerSeconds < 0 ? "-" : "") + formatTime(val, false);
+        let pct = (State.speakerSeconds / State.speakerLimit) * 100;
+        dom.bar.style.width = Math.max(0, Math.min(100, pct)) + "%";
+
+        dom.card.className = "card main-card";
+        const isReadyMode = !State.speakerRunning && (State.speakerSeconds === State.speakerLimit);
+
+        if (isReadyMode) {
+            dom.body.classList.add("idle-layout");
+            dom.card.classList.add("ready-mode");
+        } else {
+            dom.body.classList.remove("idle-layout");
+            if (!State.speakerRunning) dom.card.classList.add("paused-mode");
+            if (State.speakerSeconds <= 0) dom.card.classList.add("status-danger");
+            else if (State.speakerSeconds <= State.alertTime) dom.card.classList.add("status-warning");
+        }
+        dom.body.classList.toggle("hide-speaker-info", isReadyMode);
+        if (!isReadyMode) dom.body.classList.add("show-header-title");
+        else dom.body.classList.remove("show-header-title");
+        
+        // 仅当顶部标题未获取焦点时才更新，避免打断用户输入
+        if (document.activeElement !== dom.headerTitle) {
+            const title = dom.centerTitle.innerText.replace(/\n/g, ' ').trim();
+            const subtitle = dom.centerSubtitle.innerText.replace(/\n/g, ' ').trim();
+            const subText = (subtitle === "点击输入副标题") ? "" : subtitle;
+            dom.headerTitle.innerText = (!isReadyMode && subText) ? `${title}${subText}` : title;
+        }
+        // 同步副标题
+        if (document.activeElement !== dom.headerSubtitle) {
+            dom.headerSubtitle.innerText = dom.centerSubtitle.innerText.replace(/\n/g, ' ');
+        }
+        renderSpeakerInfo();
+        const meetingRemaining = State.meetingLimit > 0 ? (State.meetingLimit - State.meetingSeconds) : null;
+        if (meetingRemaining !== null && meetingRemaining <= State.meetingAlert && meetingRemaining > 0) {
+            dom.body.classList.add("meeting-alert");
+        } else {
+            dom.body.classList.remove("meeting-alert");
+        }
+        if (State.meetingEnded) {
+            dom.body.classList.add("meeting-ended");
+            dom.btnMeeting.innerText = "会议已超时";
+            dom.btnMeeting.style.opacity = "0.7";
+            dom.btnMeeting.classList.add("btn-meeting-ended");
+        } else {
+            dom.body.classList.remove("meeting-ended");
+            dom.btnMeeting.classList.remove("btn-meeting-ended");
+            if (State.meetingRunning) {
+                dom.btnMeeting.innerText = "会议进行中";
+                dom.btnMeeting.style.opacity = "0.7";
+            } else {
+                dom.btnMeeting.innerText = "会议开始";
+                dom.btnMeeting.style.opacity = "1";
+            }
+        }
+
+        if (State.speakerRunning) {
+            dom.btnSpeaker.innerText = "发言暂停"; dom.btnSpeaker.className = "btn-speaker-pause";
+        } else {
+            dom.btnSpeaker.innerText = (State.speakerSeconds < State.speakerLimit && State.speakerSeconds > 0) ? "发言继续" : "发言开始";
+            dom.btnSpeaker.className = "btn-speaker-start";
+        }
+    }
+
+    function updateRealTimeClock() {
+        const now = new Date();
+        // 改为手动拼接，兼容所有Linux浏览器环境
+        const h = pad(now.getHours());
+        const m = pad(now.getMinutes());
+        const s = pad(now.getSeconds());
+        dom.clock.innerText = `${h}:${m}:${s}`;
+        const year = now.getFullYear();
+        const month = now.getMonth() + 1;
+        const day = now.getDate();
+        dom.date.innerText = `${year}年${month}月${day}日`;
+    }
+
+    let idleTimer = null;
+    let isHoveringHotZone = false;
+    function setupInteractionMonitor() {
+        document.addEventListener('mousemove', wakeUpUI);
+        document.addEventListener('mouseleave', () => { if (document.fullscreenElement) dom.body.classList.add('user-idle'); });
+        document.addEventListener('fullscreenchange', () => {
+            const isFullscreen = !!document.fullscreenElement;
+            if (isFullscreen) {
+                dom.body.classList.add('fullscreen-mode');
+                dom.btnFullscreen.innerHTML = '⛶ 退出全屏';
+                dom.btnFullscreen.title = '退出全屏';
+                wakeUpUI();
+            } else {
+                dom.body.classList.remove('fullscreen-mode', 'user-idle', 'fullscreen-idle');
+                dom.btnFullscreen.innerHTML = '⛶ 全屏显示';
+                dom.btnFullscreen.title = '全屏显示';
+                clearTimeout(idleTimer);
+            }
+        });
+        
+        const hotZones = [dom.controls, dom.settings, dom.speakerPanel, dom.btnFullscreen];
+        hotZones.forEach(el => {
+            if (!el) return;
+            el.addEventListener('mouseenter', () => { isHoveringHotZone = true; wakeUpUI(); });
+            el.addEventListener('mouseleave', () => { isHoveringHotZone = false; wakeUpUI(); });
+        });
+    }
+    function wakeUpUI() {
+        dom.body.classList.remove('user-idle', 'fullscreen-idle');
+        if (idleTimer) clearTimeout(idleTimer);
+        if (document.fullscreenElement) {
+            const delay = isHoveringHotZone ? 3000 : 500;
+            idleTimer = setTimeout(() => { dom.body.classList.add('user-idle'); dom.body.classList.add('fullscreen-idle'); }, delay);
+        }
+    }
+    function toggleFullScreen() {
+        if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(e=>{});
+        else if (document.exitFullscreen) document.exitFullscreen();
+    }
+
+    function updateSettingsPanelVisibility() {
+        dom.body.classList.toggle('settings-panel-hidden', !State.panelVisible);
+        if (dom.btnTogglePanel) {
+            dom.btnTogglePanel.innerText = State.panelVisible ? '✕ 收起' : '≡ 设置';
+            dom.btnTogglePanel.title = State.panelVisible ? '收起设置面板（快捷键 H）' : '显示设置面板（快捷键 H）';
+        }
+    }
+
+    function toggleSettingsPanel() {
+        State.panelVisible = !State.panelVisible;
+        updateSettingsPanelVisibility();
+    }
+
+    function setupEditablePanelAvoidance() {
+        document.addEventListener('focusin', event => {
+            if (event.target && event.target.isContentEditable) {
+                dom.body.classList.add('editing-content');
+            }
+        });
+        document.addEventListener('focusout', event => {
+            if (!event.target || !event.target.isContentEditable) return;
+            setTimeout(() => {
+                if (!document.activeElement || !document.activeElement.isContentEditable) {
+                    dom.body.classList.remove('editing-content');
+                }
+            }, 0);
+        });
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && document.activeElement && document.activeElement.isContentEditable) {
+                event.stopImmediatePropagation();
+                document.activeElement.blur();
+                const selection = window.getSelection();
+                if (selection) selection.removeAllRanges();
+            } else if ((event.key === 'h' || event.key === 'H') && !(event.target && (event.target.isContentEditable || /INPUT|SELECT|TEXTAREA/.test(event.target.tagName)))) {
+                toggleSettingsPanel();
+            }
+        });
+    }
+
+    function triggerImport() {
+        const input = document.getElementById('configFile');
+        if (input) input.click();
+    }
+    function triggerBgImage() {
+        const input = document.getElementById('inputBgImage');
+        if (input) input.click();
+    }
+    function triggerLogoImage() {
+        const input = document.getElementById('inputLogoImage');
+        if (input) input.click();
+    }
+    function loadBgImage(e) {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        if (file.size > 10 * 1024 * 1024) { // 限制 10MB
+            alert("背景图片过大，请选择 10MB 以下的图片以保证流畅运行。");
+            return;
+        }
+        
+        // 1. 使用 Blob URL 立即显示 (解决大文件 Base64 渲染卡顿/失败问题)
+        if (State.bgBlobUrl) URL.revokeObjectURL(State.bgBlobUrl);
+        State.bgBlobUrl = URL.createObjectURL(file);
+        document.documentElement.style.setProperty('--bg-image', `url("${State.bgBlobUrl}")`);
+        dom.body.classList.add('bg-image');
+        dom.inBgMode.value = 'image';
+
+        // 2. 后台静默读取 Base64 数据，仅用于“导出配置”功能
+        const reader = new FileReader();
+        reader.onload = () => {
+            State.backgroundImageData = `url("${reader.result}")`;
+        };
+        reader.readAsDataURL(file);
+    }
+    function loadLogoImage(e) {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        if (file.size > 5 * 1024 * 1024) { // 限制 5MB 以防浏览器卡顿
+            alert("Logo图片过大，请选择 5MB 以下的图片。");
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+            if (dom.logo) dom.logo.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+    }
+    function exportConfig() {
+        const config = getConfig();
+        const data = JSON.stringify(config, null, 2);
+        const blob = new Blob([data], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'meeting-config.json';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    }
+    function importConfig(e) {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            try {
+                const cfg = JSON.parse(reader.result);
+                applyConfig(cfg);
+                manualUpdateSettings();
+                alert('配置已导入。');
+            } catch (err) {
+                alert("配置文件导入失败：" + (err.message || err));
+            } finally {
+                e.target.value = "";
+            }
+        };
+        reader.readAsText(file);
+    }
+    function getConfig() {
+        return {
+            speakerMinutes: parseInt(dom.inTime.value) || 8,
+            speakerAlertSec: parseInt(dom.inAlert.value) || 30,
+            meetingMinutes: parseInt(dom.inMeetingLimit.value) || 120,
+            meetingAlertMinutes: parseInt(dom.inMeetingAlert.value) || 10,
+            meetingIntervalSec: AlertConfig.meetingInterval,
+            meetingBurstCount: AlertConfig.meetingBurstCount,
+            meetingBurstDurationSec: AlertConfig.meetingBurstDuration,
+            industry: dom.inIndustry.value,
+            meetingTitle: dom.centerTitle.innerText,
+            meetingSubtitle: dom.centerSubtitle.innerText,
+            backgroundMode: dom.inBgMode.value,
+            backgroundImage: State.backgroundImageData || getComputedStyle(document.documentElement).getPropertyValue('--bg-image').trim(),
+            logo: dom.logo.src,
+            logoScale: parseInt(dom.inLogoScale.value) || 100,
+            logoTop: dom.logo.style.top || '',
+            primaryColor: dom.inPrimaryColor.value,
+            accentColor: dom.inAccentColor.value,
+            titleFontSize: parseInt(dom.inTitleSize.value) || 60,
+            titleFont: dom.inTitleFont.value,
+            titleColor: dom.inTitleColor.value,
+            centerTitleColor: getComputedStyle(dom.centerTitle).color,
+            centerSubtitleColor: getComputedStyle(dom.centerSubtitle).color,
+            centerTitleMarginTop: getComputedStyle(dom.centerTitle).marginTop,
+            centerSubtitleMarginTop: getComputedStyle(dom.centerSubtitle).marginTop,
+            mainCardBackground: getComputedStyle(dom.card).backgroundColor,
+            subtitleFontSize: parseInt(dom.inSubtitleSize.value) || 30,
+            subtitleFont: dom.inSubtitleFont.value,
+            subtitleColor: dom.inSubtitleColor.value,
+            dateFontSize: parseInt(dom.inDateSize.value) || 24,
+            dateFont: dom.inDateFont.value,
+            dateColor: dom.inDateColor.value,
+            unitFontSize: parseInt(dom.inUnitSize.value) || 20,
+            unitFont: dom.inUnitFont.value,
+            unitColor: dom.inUnitColor.value,
+            showDate: dom.toggleDate.checked,
+            headerTitleTop: getComputedStyle(dom.headerTitle).top,
+            headerSubtitleTop: getComputedStyle(dom.headerSubtitle).top,
+            unitBottom: getComputedStyle(dom.unit).bottom,
+            dateBottom: getComputedStyle(dom.date).bottom,
+            showUnit: dom.toggleUnit.checked,
+            unitName: dom.unit.innerText,
+            showSpeakerInfo: dom.toggleSpeakerInfo.checked,
+            showMeetingTotal: dom.toggleMeetingTotal.checked,
+            showProgress: dom.toggleProgress.checked,
+            speakers: State.speakers,
+            currentSpeakerIndex: State.currentSpeakerIndex,
+            autoRotate: State.autoRotate
+        };
+    }
+    function applyConfig(cfg) {
+        if (typeof cfg.speakerMinutes === 'number') dom.inTime.value = cfg.speakerMinutes;
+        if (typeof cfg.speakerAlertSec === 'number') dom.inAlert.value = cfg.speakerAlertSec;
+        if (typeof cfg.meetingMinutes === 'number') dom.inMeetingLimit.value = cfg.meetingMinutes;
+        if (typeof cfg.meetingAlertMinutes === 'number') dom.inMeetingAlert.value = cfg.meetingAlertMinutes;
+        if (typeof cfg.meetingIntervalSec === 'number') AlertConfig.meetingInterval = cfg.meetingIntervalSec;
+        if (typeof cfg.meetingBurstCount === 'number') AlertConfig.meetingBurstCount = cfg.meetingBurstCount;
+        if (typeof cfg.meetingBurstDurationSec === 'number') AlertConfig.meetingBurstDuration = cfg.meetingBurstDurationSec;
+        if (typeof cfg.industry === 'string') {
+            dom.inIndustry.value = cfg.industry;
+            applyIndustryPreset(); // 先应用行业预设，防止覆盖后续导入的自定义Logo和颜色
+        }
+        if (typeof cfg.meetingTitle === 'string') {
+            dom.centerTitle.innerText = cfg.meetingTitle;
+            dom.headerTitle.innerText = cfg.meetingTitle.replace(/\n/g, ' ');
+        }
+        if (typeof cfg.meetingSubtitle === 'string') {
+            dom.centerSubtitle.innerText = cfg.meetingSubtitle;
+            dom.headerSubtitle.innerText = cfg.meetingSubtitle.replace(/\n/g, ' ');
+        }
+        if (typeof cfg.backgroundMode === 'string') dom.inBgMode.value = cfg.backgroundMode;
+        if (typeof cfg.backgroundImage === 'string' && cfg.backgroundImage !== 'none') {
+            document.documentElement.style.setProperty('--bg-image', cfg.backgroundImage);
+            State.backgroundImageData = cfg.backgroundImage;
+        }
+        if (typeof cfg.logo === 'string') dom.logo.src = cfg.logo;
+        if (typeof cfg.logoScale === 'number') dom.inLogoScale.value = cfg.logoScale;
+        if (typeof cfg.logoTop === 'string') dom.logo.style.top = cfg.logoTop;
+        if (typeof cfg.primaryColor === 'string') dom.inPrimaryColor.value = cfg.primaryColor;
+        if (typeof cfg.accentColor === 'string') dom.inAccentColor.value = cfg.accentColor;
+        if (typeof cfg.titleFontSize === 'number') dom.inTitleSize.value = cfg.titleFontSize;
+        if (typeof cfg.titleFont === 'string') selectFontValue(dom.inTitleFont, cfg.titleFont);
+        if (typeof cfg.titleColor === 'string') dom.inTitleColor.value = cfg.titleColor;
+        if (typeof cfg.centerTitleColor === 'string') {
+            dom.centerTitle.style.color = cfg.centerTitleColor;
+        }
+        if (typeof cfg.centerTitleMarginTop === 'string') dom.centerTitle.style.marginTop = cfg.centerTitleMarginTop;
+        if (typeof cfg.centerSubtitleColor === 'string') {
+            dom.centerSubtitle.style.color = cfg.centerSubtitleColor;
+        }
+        if (typeof cfg.centerSubtitleMarginTop === 'string') dom.centerSubtitle.style.marginTop = cfg.centerSubtitleMarginTop;
+        if (typeof cfg.subtitleFontSize === 'number') dom.inSubtitleSize.value = cfg.subtitleFontSize;
+        if (typeof cfg.subtitleFont === 'string') selectFontValue(dom.inSubtitleFont, cfg.subtitleFont);
+        if (typeof cfg.subtitleColor === 'string') dom.inSubtitleColor.value = cfg.subtitleColor;
+        if (typeof cfg.dateFontSize === 'number') dom.inDateSize.value = cfg.dateFontSize;
+        if (typeof cfg.dateFont === 'string') selectFontValue(dom.inDateFont, cfg.dateFont);
+        if (typeof cfg.dateColor === 'string') dom.inDateColor.value = cfg.dateColor;
+        if (typeof cfg.unitFontSize === 'number') dom.inUnitSize.value = cfg.unitFontSize;
+        if (typeof cfg.unitFont === 'string') selectFontValue(dom.inUnitFont, cfg.unitFont);
+        if (typeof cfg.unitColor === 'string') dom.inUnitColor.value = cfg.unitColor;
+        if (typeof cfg.showDate === 'boolean') dom.toggleDate.checked = cfg.showDate;
+        if (typeof cfg.headerTitleTop === 'string') dom.headerTitle.style.top = cfg.headerTitleTop;
+        if (typeof cfg.headerSubtitleTop === 'string') dom.headerSubtitle.style.top = cfg.headerSubtitleTop;
+        if (typeof cfg.unitBottom === 'string') dom.unit.style.bottom = cfg.unitBottom;
+        if (typeof cfg.dateBottom === 'string') dom.date.style.bottom = cfg.dateBottom;
+        if (typeof cfg.showUnit === 'boolean') dom.toggleUnit.checked = cfg.showUnit;
+        if (typeof cfg.unitName === 'string') dom.unit.innerText = cfg.unitName;
+        if (typeof cfg.showSpeakerInfo === 'boolean') dom.toggleSpeakerInfo.checked = cfg.showSpeakerInfo;
+        if (typeof cfg.showMeetingTotal === 'boolean') dom.toggleMeetingTotal.checked = cfg.showMeetingTotal;
+        if (typeof cfg.showProgress === 'boolean') dom.toggleProgress.checked = cfg.showProgress;
+        if (Array.isArray(cfg.speakers)) State.speakers = cfg.speakers;
+        if (typeof cfg.currentSpeakerIndex === 'number') State.currentSpeakerIndex = cfg.currentSpeakerIndex;
+        if (typeof cfg.autoRotate === 'boolean') State.autoRotate = cfg.autoRotate;
+        dom.toggleAutoRotate.checked = State.autoRotate;
+        applyAppearanceSettings();
+        applyLayoutSettings();
+        renderSpeakerList();
+    }
+
+    function selectFontValue(select, value) {
+        if (select && Array.from(select.options).some(option => option.value === value)) {
+            select.value = value;
+        }
+    }
+
+    const IndustryPresets = {
+        tax: {
+            logo: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><circle cx="60" cy="60" r="56" fill="none" stroke="%23d4af37" stroke-width="4"/><path d="M60 30a12 12 0 1 1 0 24 12 12 0 0 1 0-24zm-30 18a10 10 0 1 1 0 20 10 10 0 0 1 0-20zm60 0a10 10 0 1 1 0 20 10 10 0 0 1 0-20zM60 60c-13.3 0-24 7.2-24 18v6h48v-6c0-10.8-10.7-18-24-18zm-30 22c-9.6 0-16.8 4.8-16.8 12v5h19.2v-5c0-4.8 3.6-8.4 9.6-10.8zm60 0c6 2.4 9.6 6 9.6 10.8v5h19.2v-5c0-7.2-7.2-12-16.8-12z" fill="%23d4af37"/></svg>',
+            primary: '#003366',
+            accent: '#d4af37'
+        },
+        finance: {
+            logo: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320"><rect width="320" height="320" fill="%230b1f2a"/><circle cx="160" cy="160" r="120" fill="%23d4af37"/><text x="160" y="185" font-size="92" text-anchor="middle" fill="%230b1f2a" font-family="Arial">F</text></svg>',
+            primary: '#0b1f2a',
+            accent: '#d4af37'
+        },
+        tech: {
+            logo: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320"><rect width="320" height="320" fill="%230a1a2b"/><rect x="60" y="60" width="200" height="200" rx="20" fill="%2330b7ff"/><text x="160" y="190" font-size="88" text-anchor="middle" fill="%230a1a2b" font-family="Arial">T</text></svg>',
+            primary: '#0a1a2b',
+            accent: '#30b7ff'
+        },
+        health: {
+            logo: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320"><rect width="320" height="320" fill="%230a2a23"/><circle cx="160" cy="160" r="120" fill="%2328a745"/><path d="M150 95h20v55h55v20h-55v55h-20v-55H95v-20h55z" fill="white"/></svg>',
+            primary: '#0a2a23',
+            accent: '#28a745'
+        },
+        education: {
+            logo: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320"><rect width="320" height="320" fill="%23221b2b"/><polygon points="160,60 300,140 160,220 20,140" fill="%23f0a53a"/><text x="160" y="200" font-size="72" text-anchor="middle" fill="%23221b2b" font-family="Arial">E</text></svg>',
+            primary: '#221b2b',
+            accent: '#f0a53a'
+        }
+    };
+    function applyIndustryPreset() {
+        const preset = IndustryPresets[dom.inIndustry.value];
+        if (!preset) return;
+        if (dom.logo) dom.logo.src = preset.logo;
+        dom.inPrimaryColor.value = preset.primary;
+        dom.inAccentColor.value = preset.accent;
+        applyAppearanceSettings();
+    }
+    
+    function logCurrentSpeaker() {
+        if (State.speakerSeconds === State.speakerLimit) return;
+        
+        const sp = State.speakers[State.currentSpeakerIndex];
+        const usedSeconds = State.speakerLimit - State.speakerSeconds;
+        const now = new Date();
+        
+        State.logs.push({
+            name: sp ? sp.name : "未知",
+            dept: sp ? sp.dept : "",
+            time: now.toLocaleTimeString(),
+            duration: usedSeconds,
+            limit: State.speakerLimit
+        });
+    }
+
+    function exportMeetingLogs() {
+        if (State.logs.length === 0) { alert("暂无发言记录"); return; }
+        let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; 
+        csvContent += "姓名,部门,结束时间,发言时长(秒),限时(秒),状态\n";
+        
+        State.logs.forEach(log => {
+            const status = log.duration > log.limit ? "超时" : "正常";
+            csvContent += `${log.name},${log.dept},${log.time},${log.duration},${log.limit},${status}\n`;
+        });
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `会议记录_${new Date().toLocaleDateString()}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    function applyAppearanceSettings() {
+        const mode = dom.inBgMode.value;
+        dom.body.classList.toggle('bg-image', mode === 'image');
+        const primary = dom.inPrimaryColor.value;
+        const logoScale = Math.min(300, Math.max(30, parseInt(dom.inLogoScale.value, 10) || 100));
+        dom.inLogoScale.value = logoScale;
+        document.documentElement.style.setProperty('--logo-height', `${Math.round(120 * logoScale / 100)}px`);
+        document.documentElement.style.setProperty('--logo-idle-height', `${Math.round(180 * logoScale / 100)}px`);
+
+        if (mode === 'default') {
+            document.documentElement.style.setProperty('--bg-current', `linear-gradient(to bottom, ${primary} 0%, #001a33 100%)`);
+        } else if (mode === 'ocean') {
+            document.documentElement.style.setProperty('--bg-current', 'linear-gradient(to bottom, #02152b 0%, #001529 100%)');
+        } else if (mode === 'sunset') {
+            document.documentElement.style.setProperty('--bg-current', 'linear-gradient(to bottom, #5a2a1b 0%, #2a0f08 100%)');
+        } else if (mode === 'image') {
+            document.documentElement.style.setProperty('--bg-current', 'var(--bg-image)');
+        }
+        if (primary) {
+            document.documentElement.style.setProperty('--tax-blue-dark', primary);
+            document.documentElement.style.setProperty('--tax-blue-light', primary);
+            const r = parseInt(primary.substr(1,2), 16);
+            const g = parseInt(primary.substr(3,2), 16);
+            const b = parseInt(primary.substr(5,2), 16);
+            document.documentElement.style.setProperty('--tax-blue-dark-rgb', `${r}, ${g}, ${b}`);
+        }
+        if (dom.inAccentColor.value) {
+            document.documentElement.style.setProperty('--tax-gold', dom.inAccentColor.value);
+            document.documentElement.style.setProperty('--tax-gold-bright', dom.inAccentColor.value);
+        }
+        if (dom.inTitleSize.value) {
+            document.documentElement.style.setProperty('--title-size', dom.inTitleSize.value + 'px');
+        }
+        if (dom.inTitleFont.value) {
+            document.documentElement.style.setProperty('--title-font', dom.inTitleFont.value);
+        }
+        if (dom.inTitleColor.value) {
+            document.documentElement.style.setProperty('--title-color', dom.inTitleColor.value);
+        }
+        if (dom.inSubtitleSize.value) {
+            document.documentElement.style.setProperty('--subtitle-size', dom.inSubtitleSize.value + 'px');
+        }
+        if (dom.inSubtitleFont.value) {
+            document.documentElement.style.setProperty('--subtitle-font', dom.inSubtitleFont.value);
+        }
+        if (dom.inSubtitleColor.value) {
+            document.documentElement.style.setProperty('--subtitle-color', dom.inSubtitleColor.value);
+        }
+        if (dom.inDateSize.value) {
+            document.documentElement.style.setProperty('--date-size', dom.inDateSize.value + 'px');
+        }
+        if (dom.inDateFont.value) {
+            document.documentElement.style.setProperty('--date-font', dom.inDateFont.value);
+        }
+        if (dom.inDateColor.value) {
+            document.documentElement.style.setProperty('--date-color', dom.inDateColor.value);
+        }
+        if (dom.inUnitSize.value) {
+            document.documentElement.style.setProperty('--unit-size', dom.inUnitSize.value + 'px');
+        }
+        if (dom.inUnitFont.value) {
+            document.documentElement.style.setProperty('--unit-font', dom.inUnitFont.value);
+        }
+        if (dom.inUnitColor.value) {
+            document.documentElement.style.setProperty('--unit-color', dom.inUnitColor.value);
+        }
+    }
+    function applyLayoutSettings() {
+        dom.body.classList.toggle('hide-date', !dom.toggleDate.checked);
+        dom.body.classList.toggle('hide-unit', !dom.toggleUnit.checked);
+        dom.body.classList.toggle('user-hide-speaker-info', !dom.toggleSpeakerInfo.checked);
+        dom.body.classList.toggle('hide-meeting-total', !dom.toggleMeetingTotal.checked);
+        dom.body.classList.toggle('hide-progress', !dom.toggleProgress.checked);
+    }
+
+    function renderSpeakerList() {
+        if (!dom.speakerList) return;
+        dom.speakerList.innerHTML = '';
+        State.speakers.forEach((sp, idx) => {
+            const item = document.createElement('div');
+            item.className = 'speaker-item' + (idx === State.currentSpeakerIndex ? ' active' : '');
+            item.innerText = `${sp.name} / ${sp.dept} / ${sp.role}`;
+            item.draggable = true;
+            item.ondragstart = (e) => { dragSrcIndex = idx; e.target.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; };
+            item.ondragend = (e) => { e.target.classList.remove('dragging'); dom.speakerList.querySelectorAll('.speaker-item').forEach(el => el.classList.remove('drag-over')); };
+            item.ondragover = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; dom.speakerList.querySelectorAll('.speaker-item').forEach(el => el.classList.remove('drag-over')); e.currentTarget.classList.add('drag-over'); };
+            item.ondrop = (e) => {
+                e.preventDefault(); e.stopPropagation();
+                if (dragSrcIndex !== null && dragSrcIndex !== idx) {
+                    const cur = State.speakers[State.currentSpeakerIndex];
+                    const [moved] = State.speakers.splice(dragSrcIndex, 1);
+                    State.speakers.splice(idx, 0, moved);
+                    const newIdx = State.speakers.indexOf(cur);
+                    State.currentSpeakerIndex = newIdx !== -1 ? newIdx : 0;
+                    renderSpeakerList(); renderSpeakerInfo();
+                }
+            };
+            item.onclick = () => switchToSpeaker(idx);
+            dom.speakerList.appendChild(item);
+        });
+        const current = State.speakers[State.currentSpeakerIndex];
+        if (current) {
+            dom.inSpeakerName.value = current.name || '';
+            dom.inSpeakerDept.value = current.dept || '';
+            dom.inSpeakerRole.value = current.role || '';
+        }
+    }
+    function renderSpeakerInfo() {
+        const sp = State.speakers[State.currentSpeakerIndex];
+        if (!dom.speakerInfo) return;
+        if (!sp) {
+            dom.speakerInfo.innerText = '未设置发言人';
+            return;
+        }
+        dom.speakerInfo.innerText = `${sp.name} / ${sp.dept} / ${sp.role}`;
+    }
+    function switchToSpeaker(index) {
+        if (index < 0 || index >= State.speakers.length) return;
+        State.currentSpeakerIndex = index;
+        State.speakerSeconds = State.speakerLimit;
+        State.speakerRunning = false;
+        State.speakerTimeUpPlayed = false;
+        State.speakerAlertBeepLeft = 0;
+        State.speakerAlertArmed = true;
+        renderSpeakerList();
+        render();
+    }
+    function advanceSpeaker(keepRunning) {
+        manualUpdateSettings();
+        if (State.speakers.length > 0) {
+            State.currentSpeakerIndex = (State.currentSpeakerIndex + 1) % State.speakers.length;
+        }
+        State.speakerSeconds = State.speakerLimit;
+        State.speakerRunning = !!keepRunning;
+        State.speakerTimeUpPlayed = false;
+        State.speakerAlertBeepLeft = 0;
+        State.speakerAlertArmed = true;
+        renderSpeakerList();
+        render();
+    }
+    function saveSpeaker() {
+        const name = dom.inSpeakerName.value.trim();
+        const dept = dom.inSpeakerDept.value.trim();
+        const role = dom.inSpeakerRole.value.trim();
+        if (!name && !dept && !role) return;
+        if (State.speakers.length === 0) {
+            State.speakers.push({ name, dept, role });
+            State.currentSpeakerIndex = 0;
+        } else {
+            State.speakers[State.currentSpeakerIndex] = { name, dept, role };
+        }
+        renderSpeakerList();
+        renderSpeakerInfo();
+    }
+    function addSpeaker() {
+        const name = dom.inSpeakerName.value.trim();
+        const dept = dom.inSpeakerDept.value.trim();
+        const role = dom.inSpeakerRole.value.trim();
+        if (!name && !dept && !role) return;
+        State.speakers.push({ name, dept, role });
+        State.currentSpeakerIndex = State.speakers.length - 1;
+        renderSpeakerList();
+        renderSpeakerInfo();
+    }
+    function removeSpeaker() {
+        if (State.speakers.length === 0) return;
+        State.speakers.splice(State.currentSpeakerIndex, 1);
+        if (State.currentSpeakerIndex >= State.speakers.length) {
+            State.currentSpeakerIndex = Math.max(0, State.speakers.length - 1);
+        }
+        renderSpeakerList();
+        renderSpeakerInfo();
+    }
+    function toggleAutoRotate() {
+        State.autoRotate = dom.toggleAutoRotate.checked;
+    }
+
+    function adjustPosition(elementId, prop, delta) {
+        let targetId = elementId;
+        let targetProp = prop;
+
+        // 判断是否处于非发言模式 (Ready Mode / Idle Layout)
+        // 如果是，则将调整目标重定向到中间的大标题/副标题，并使用 marginTop
+        if (document.body.classList.contains('idle-layout')) {
+            if (elementId === 'headerTitle') {
+                targetId = 'centerTitle';
+                targetProp = 'marginTop';
+            } else if (elementId === 'headerSubtitle') {
+                targetId = 'centerSubtitle';
+                targetProp = 'marginTop';
+            }
+        }
+
+        const el = document.getElementById(targetId);
+        if (!el) return;
+        const style = window.getComputedStyle(el);
+        let current = Math.round(parseFloat(style[targetProp])) || 0;
+        if (isNaN(current)) current = 0;
+        el.style[targetProp] = (current + delta) + 'px';
+    }
+
+    function manualUpdateSettings() {
+        let m = parseInt(dom.inTime.value), a = parseInt(dom.inAlert.value);
+        const oldLimit = State.speakerLimit; 
+        if (m > 0) State.speakerLimit = m * 60; State.alertTime = a;
+        let mt = parseInt(dom.inMeetingLimit.value);
+        if (mt > 0) State.meetingLimit = mt * 60;
+        let ma = parseInt(dom.inMeetingAlert.value);
+        if (ma >= 0) State.meetingAlert = ma * 60;
+        State.meetingNextBeepAt = null;
+        if (!State.speakerRunning && (State.speakerSeconds === oldLimit || State.speakerSeconds === State.speakerLimit)) {
+             State.speakerSeconds = State.speakerLimit;
+             State.speakerTimeUpPlayed = false;
+             State.speakerAlertBeepLeft = 0;
+             State.speakerAlertArmed = true;
+             render();
+        }
+    }
+    function formatTime(s, showHour) {
+        let h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+        let str = pad(m) + ":" + pad(sec); return showHour ? pad(h) + ":" + str : str;
+    }
+    function pad(n) { return n < 10 ? '0' + n : n; }
+    function initAudio() { if (!audioCtx) try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume(); }
+    function tryPlaySound() {
+        if (!audioCtx) return;
+        if (State.speakerAlertBeepLeft > 0) {
+            beep(600, 0.1, 0.1);
+            State.speakerAlertBeepLeft--;
+        }
+    }
+    function playTimeUpSound() {
+        const playOnce = () => new Promise((resolve) => {
+            const audio = new Audio(TIMEUP_AUDIO_SRC);
+            audio.onended = resolve;
+            audio.onerror = resolve;
+            const p = audio.play();
+            if (p && typeof p.catch === 'function') p.catch(() => resolve());
+        });
+        playOnce().then(playOnce);
+    }
+    function tryPlayMeetingSound() {
+        if (!audioCtx || State.meetingLimit <= 0) return;
+        let remaining = State.meetingLimit - State.meetingSeconds;
+        if (remaining <= State.meetingAlert && remaining > 0) {
+            if (State.meetingNextBeepAt === null) State.meetingNextBeepAt = State.meetingSeconds;
+            if (State.meetingSeconds >= State.meetingNextBeepAt) {
+                playMeetingBurst();
+                State.meetingNextBeepAt = State.meetingSeconds + AlertConfig.meetingInterval;
+            }
+        } else {
+            State.meetingNextBeepAt = null;
+        }
+    }
+    function playMeetingBurst() {
+        playBurst(520, 0.12, AlertConfig.meetingBurstCount, AlertConfig.meetingBurstDuration);
+    }
+    function playBurst(freq, vol, count, totalSeconds) {
+        const stepMs = Math.max(1, Math.floor((totalSeconds * 1000) / count));
+        for (let i = 0; i < count; i++) {
+            setTimeout(() => beep(freq, vol, 0.08), i * stepMs);
+        }
+    }
+    function beep(freq, vol, dur) { try { const osc = audioCtx.createOscillator(), gain = audioCtx.createGain(); osc.connect(gain); gain.connect(audioCtx.destination); osc.frequency.value = freq; gain.gain.value = vol; osc.start(); osc.stop(audioCtx.currentTime + dur); } catch (e) {} }
+
+    function openAboutWindow() {
+        // 打开 about.html，main.js 会拦截并应用窗口样式
+        window.open('about.html', 'AboutWindow');
+    }
+</script>
+</body>
+</html>
